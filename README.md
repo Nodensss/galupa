@@ -2,25 +2,53 @@
 
 This tool extracts text from multiple-choice test screenshots and identifies the correct answer (highlighted in green).
 
-## Setup
+## 🚀 Getting Started (from GitHub)
 
-1. **Install Python:** Ensure you have Python installed (3.8+ recommended).
+Follow these steps to download and run the project on your computer.
 
-2. **Install Dependencies:**
-   Run the following command in your terminal to install the required packages:
-   ```bash
-   pip install -r requirements.txt
-   ```
+### 1. Prerequisites
+- **Python:** Make sure you have Python installed (version 3.8 or higher). You can download it from [python.org](https://www.python.org/downloads/).
+- **Git:** Make sure Git is installed to clone the repository. [Download Git](https://git-scm.com/downloads).
 
-## Running the App
+### 2. Clone the Repository
+Open your terminal (Command Prompt, PowerShell, or Terminal) and run:
 
-To start the application, run:
+```bash
+git clone https://github.com/YOUR_USERNAME/YOUR_REPO_NAME.git
+cd YOUR_REPO_NAME
+```
+*(Replace `YOUR_USERNAME/YOUR_REPO_NAME` with the actual URL of this repository)*
+
+### 3. Set up a Virtual Environment (Recommended)
+It's best practice to use a virtual environment to avoid conflicts with other Python projects.
+
+**Windows:**
+```bash
+python -m venv venv
+.\venv\Scripts\activate
+```
+
+**macOS / Linux:**
+```bash
+python3 -m venv venv
+source venv/bin/activate
+```
+
+### 4. Install Dependencies
+Install the required libraries:
+
+```bash
+pip install -r requirements.txt
+```
+
+### 5. Run the Application
+Start the Streamlit app:
 
 ```bash
 streamlit run app.py
 ```
 
-This will launch the app in your default web browser (usually at http://localhost:8501).
+The application should automatically open in your default web browser at `http://localhost:8501`.
 
 ## Usage
 
