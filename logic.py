@@ -182,7 +182,7 @@ def process_image(image_bytes):
 
     # Format options
     formatted_options = []
-    correct_answer_text = "NOT DETECTED"
+    correct_answer_text = None
 
     # Mapping index to A, B, C, D
     labels = ["A", "B", "C", "D", "E", "F"]
@@ -215,18 +215,27 @@ def process_image(image_bytes):
             text = text[match.end():].strip()
 
         formatted_option = f"{label}. {text}"
+        if is_correct:
+             formatted_option += " ✅"
+             correct_answer_text = formatted_option
+
         formatted_options.append(formatted_option)
 
-        if is_correct:
-            correct_answer_text = formatted_option
 
     question_text = "\n".join([item['text'] for item in question_lines])
 
     # Construct full text output
-    output_text = f"{question_text}\n"
+    # Format:
+    # Вопрос:
+    # [Text]
+    #
+    # Ответы:
+    # A. [Text]
+    # B. [Text] ✅
+
+    output_text = f"Вопрос:\n{question_text}\n\nОтветы:\n"
     for opt in formatted_options:
         output_text += f"{opt}\n"
-    output_text += f"\nCorrect Answer: {correct_answer_text}"
 
     return {
         'question': question_text,
