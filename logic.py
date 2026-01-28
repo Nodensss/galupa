@@ -153,7 +153,8 @@ def process_image(image_bytes):
         structured_data.append({
             'text': text,
             'box': box,
-            'is_correct': False
+            'is_correct': False,
+            'index': i
         })
 
     # Heuristic for Question vs Options
@@ -252,7 +253,7 @@ def process_image(image_bytes):
 
     if options_block:
         options_raw = [
-            {key: line[key] for key in ['text', 'box', 'is_correct']}
+            {key: line[key] for key in ['text', 'box', 'is_correct', 'index']}
             for line in options_block
         ]
         options_block_min_y = min(line['y_min'] for line in options_block)
@@ -271,11 +272,15 @@ def process_image(image_bytes):
         ]
         question_candidates.sort(key=lambda l: l['y_center'])
         question_lines = [
-            {key: line[key] for key in ['text', 'box', 'is_correct']}
+            {key: line[key] for key in ['text', 'box', 'is_correct', 'index']}
             for line in question_candidates[-3:]
         ]
         option_lengths = [len(item['text'].strip()) for item in options_raw if item['text'].strip()]
         median_length = float(np.median(option_lengths)) if option_lengths else 0
+        question_words = re.compile(
+            r"^(какое|какая|какие|каков|когда|где|почему|как|что|чему|сколько|при)\b",
+            re.IGNORECASE,
+        )
         question_from_options = None
         for item in options_raw:
             text = item['text'].strip()
@@ -284,6 +289,7 @@ def process_image(image_bytes):
             is_question_like = (
                 "?" in text
                 or text.endswith(":")
+                or question_words.search(text)
                 or len(text) > max(40, int(median_length * 1.6))
             )
             if is_question_like:
@@ -335,9 +341,9 @@ def process_image(image_bytes):
 
         # Find which item in structured_data corresponds to the answer
         for item in options_raw:
-             if item == structured_data[best_match_idx]:
-                 item['is_correct'] = True
-                 break
+            if item.get('index') == best_match_idx:
+                item['is_correct'] = True
+                break
         # Note: If the green box is on the question (unlikely but possible error), we ignore it for now.
 
     for i, item in enumerate(options_raw):
