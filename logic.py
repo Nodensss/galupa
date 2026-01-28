@@ -154,35 +154,125 @@ def process_image(image_bytes):
     question_lines = []
     options_raw = []
 
+    def build_line_metadata(items):
+        lines = []
+        for item in items:
+            box = item['box']
+            x_min = min(p[0] for p in box)
+            x_max = max(p[0] for p in box)
+            y_min = min(p[1] for p in box)
+            y_max = max(p[1] for p in box)
+            lines.append({
+                **item,
+                'x_min': x_min,
+                'x_max': x_max,
+                'y_min': y_min,
+                'y_max': y_max,
+                'y_center': (y_min + y_max) / 2,
+            })
+        return lines
+
+    def split_into_blocks(lines, image_height):
+        if not lines:
+            return []
+        lines = sorted(lines, key=lambda l: l['y_center'])
+        gaps = [lines[i + 1]['y_center'] - lines[i]['y_center'] for i in range(len(lines) - 1)]
+        median_gap = float(np.median(gaps)) if gaps else 0
+        split_threshold = max(1.5 * median_gap, 20)
+        blocks = []
+        current = [lines[0]]
+        for i in range(1, len(lines)):
+            if lines[i]['y_center'] - lines[i - 1]['y_center'] > split_threshold:
+                blocks.append(current)
+                current = [lines[i]]
+            else:
+                current.append(lines[i])
+        blocks.append(current)
+        return blocks
+
+    def select_options_block(lines, image_height):
+        blocks = split_into_blocks(lines, image_height)
+        if not blocks:
+            return None
+        best_block = None
+        best_score = None
+        for block in blocks:
+            count = len(block)
+            x_mins = [line['x_min'] for line in block]
+            x_min_std = float(np.std(x_mins)) if len(x_mins) > 1 else 0
+            y_center = float(np.mean([line['y_center'] for line in block]))
+            in_middle = image_height * 0.15 < y_center < image_height * 0.85
+            count_bonus = 1 if 3 <= count <= 6 else 0
+            score = (count * 2) - (x_min_std / 20) + (2 if in_middle else -1) + count_bonus
+            if best_score is None or score > best_score:
+                best_score = score
+                best_block = block
+        return best_block
+
+    def filter_ui_noise(lines):
+        ui_pattern = re.compile(
+            r"(правильный\s+ответ|неправильный\s+ответ|баллов|назад|далее|завершить)",
+            re.IGNORECASE,
+        )
+        return [line for line in lines if not ui_pattern.search(line['text'])]
+
     # Try to identify where options start
     # Common option markers
     # Regex is better: ^[A-D][.)]
     marker_pattern = re.compile(r'^\s*(?:[A-Fa-f]|\d+)[\.\):]\s*')
 
-    option_start_index = -1
+    line_items = filter_ui_noise(build_line_metadata(structured_data))
+    options_block = select_options_block(line_items, img_np.shape[0])
 
-    # First pass: look for explicit markers
-    for i, item in enumerate(structured_data):
-        text_clean = item['text'].strip()
-        if marker_pattern.match(text_clean):
-            option_start_index = i
-            break
-
-    if option_start_index != -1:
-        question_lines = structured_data[:option_start_index]
-        options_raw = structured_data[option_start_index:]
+    if options_block:
+        options_raw = [
+            {key: line[key] for key in ['text', 'box', 'is_correct']}
+            for line in options_block
+        ]
+        options_block_min_y = min(line['y_min'] for line in options_block)
+        gaps = sorted(
+            [
+                abs(line_items[i + 1]['y_center'] - line_items[i]['y_center'])
+                for i in range(len(line_items) - 1)
+            ]
+        )
+        median_gap = float(np.median(gaps)) if gaps else 0
+        question_candidates = [
+            line
+            for line in line_items
+            if line['y_center'] < options_block_min_y
+            and (options_block_min_y - line['y_center']) <= max(3 * median_gap, 80)
+        ]
+        question_candidates.sort(key=lambda l: l['y_center'])
+        question_lines = [
+            {key: line[key] for key in ['text', 'box', 'is_correct']}
+            for line in question_candidates[-3:]
+        ]
     else:
-        # Fallback: Assume the last 4 items are options if total items > 4
-        if len(structured_data) >= 5:
-             question_lines = structured_data[:-4]
-             options_raw = structured_data[-4:]
+        option_start_index = -1
+
+        # First pass: look for explicit markers
+        for i, item in enumerate(structured_data):
+            text_clean = item['text'].strip()
+            if marker_pattern.match(text_clean):
+                option_start_index = i
+                break
+
+        if option_start_index != -1:
+            question_lines = structured_data[:option_start_index]
+            options_raw = structured_data[option_start_index:]
         else:
-             if len(structured_data) > 0:
-                question_lines = structured_data[:1]
-                options_raw = structured_data[1:]
-             else:
-                question_lines = []
-                options_raw = []
+            # Fallback: Assume the last 4 items are options if total items > 4
+            if len(structured_data) >= 5:
+                question_lines = structured_data[:-4]
+                options_raw = structured_data[-4:]
+            else:
+                if len(structured_data) > 0:
+                    question_lines = structured_data[:1]
+                    options_raw = structured_data[1:]
+                else:
+                    question_lines = []
+                    options_raw = []
 
     # Format options
     formatted_options = []
