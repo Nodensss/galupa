@@ -32,8 +32,8 @@ def process_image(image_bytes):
     # results format: [[box, text, confidence], ...]
     # box: [[x1, y1], [x2, y1], [x2, y2], [x1, y2]]
 
-    # Sort results by Y coordinate (top to bottom)
-    results.sort(key=lambda x: x[0][0][1])
+    # Sort results by Y coordinate (top to bottom), then X (left to right)
+    results.sort(key=lambda x: (x[0][0][1], x[0][0][0]))
 
     # Merge horizontally close boxes on similar Y
     merged_results = []
@@ -110,19 +110,22 @@ def process_image(image_bytes):
         y_max = min(h, y_max)
 
         if x_max <= x_min or y_max <= y_min:
-            return 0
+            return 0, 0
 
         roi = mask[y_min:y_max, x_min:x_max]
         green_pixels = cv2.countNonZero(roi)
-        return green_pixels
+        area = roi.shape[0] * roi.shape[1]
+        return green_pixels, area
 
     # Visualize boxes and green detection on a copy
     debug_img = img_np.copy()
 
     structured_data = []
 
+    best_match_ratio = 0
     for i, (box, text, conf) in enumerate(results):
-        green_count = check_green_intersection(box, mask)
+        green_count, area = check_green_intersection(box, mask)
+        green_ratio = (green_count / area) if area > 0 else 0
 
         # Draw box
         p1 = tuple(map(int, box[0]))
@@ -134,8 +137,9 @@ def process_image(image_bytes):
              cv2.rectangle(debug_img, p1, p3, (0, 255, 0), 2)
 
         # We need a decent amount of green to call it the correct answer.
-        # But relative to what? Maybe just the max green count across all boxes.
-        if green_count > max_intersection:
+        # Prefer the best green ratio to avoid selecting large boxes with small green areas.
+        if green_ratio > best_match_ratio:
+            best_match_ratio = green_ratio
             max_intersection = green_count
             best_match_idx = i
 
@@ -153,7 +157,7 @@ def process_image(image_bytes):
     # Try to identify where options start
     # Common option markers
     # Regex is better: ^[A-D][.)]
-    marker_pattern = re.compile(r'^[A-F][\.\):]|[a-f][\.\):]|\d[\.\):]')
+    marker_pattern = re.compile(r'^\s*(?:[A-Fa-f]|\d+)[\.\):]\s*')
 
     option_start_index = -1
 
@@ -189,7 +193,7 @@ def process_image(image_bytes):
 
     # Mark the correct answer in structured_data
     # Use a dynamic threshold based on box size? or just absolute
-    if best_match_idx != -1 and max_intersection > 20:
+    if best_match_idx != -1 and max_intersection > 20 and best_match_ratio >= 0.01:
         # Check if the best match is inside options_raw or question_lines
         # We assume correct answer is in options
         # Map best_match_idx (which is index in structured_data) to options_raw
