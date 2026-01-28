@@ -97,10 +97,17 @@ def process_image(image_bytes):
     def check_green_intersection(box, mask):
         # expand box slightly to catch borders
         # box format from easyocr is list of lists
-        x_min = int(min(p[0] for p in box)) - 10
-        x_max = int(max(p[0] for p in box)) + 10
-        y_min = int(min(p[1] for p in box)) - 10
-        y_max = int(max(p[1] for p in box)) + 10
+        x_min_raw = min(p[0] for p in box)
+        x_max_raw = max(p[0] for p in box)
+        y_min_raw = min(p[1] for p in box)
+        y_max_raw = max(p[1] for p in box)
+        height = y_max_raw - y_min_raw
+        left_pad = max(10, int(height * 2.0))
+        y_pad = max(10, int(height * 0.5))
+        x_min = int(x_min_raw) - left_pad
+        x_max = int(x_max_raw) + 10
+        y_min = int(y_min_raw) - y_pad
+        y_max = int(y_max_raw) + y_pad
 
         # Clip to image bounds
         h, w = mask.shape
@@ -267,6 +274,25 @@ def process_image(image_bytes):
             {key: line[key] for key in ['text', 'box', 'is_correct']}
             for line in question_candidates[-3:]
         ]
+        option_lengths = [len(item['text'].strip()) for item in options_raw if item['text'].strip()]
+        median_length = float(np.median(option_lengths)) if option_lengths else 0
+        question_from_options = None
+        for item in options_raw:
+            text = item['text'].strip()
+            if not text:
+                continue
+            is_question_like = (
+                "?" in text
+                or text.endswith(":")
+                or len(text) > max(40, int(median_length * 1.6))
+            )
+            if is_question_like:
+                question_from_options = item
+                break
+        if question_from_options:
+            options_raw = [item for item in options_raw if item is not question_from_options]
+            if not question_lines:
+                question_lines = [question_from_options]
     else:
         option_start_index = -1
 
